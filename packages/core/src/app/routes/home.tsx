@@ -323,10 +323,12 @@ function SortControl({ value, onChange }: { value: SortKey; onChange: (next: Sor
   );
 }
 
+// Offered even before an agent is connected: the new deck opens the agent
+// panel, which walks first-time users through installing one.
 function useCreateDeckWithAgent() {
-  const { provider } = useAgentStatus();
+  const { enabled, provider } = useAgentStatus();
   const start = useCreateDeck();
-  if (!provider) return null;
+  if (!enabled) return null;
   return { provider, start };
 }
 
@@ -339,7 +341,11 @@ function NewDeckButton() {
       size="sm"
       className="h-8 shrink-0"
       onClick={agent.start}
-      title={format(t.agent.createDeckWith, { provider: agent.provider.name })}
+      title={
+        agent.provider
+          ? format(t.agent.createDeckWith, { provider: agent.provider.name })
+          : t.agent.createDeck
+      }
     >
       <Plus />
       {t.agent.createDeck}
@@ -404,8 +410,10 @@ function EmptyState({ isDraft, folderName }: { isDraft: boolean; folderName?: st
             </p>
             {agent ? (
               <Button size="sm" className="mt-4" onClick={agent.start}>
-                <ProviderLogo provider={agent.provider.id} />
-                {format(t.agent.createDeckWith, { provider: agent.provider.name })}
+                {agent.provider ? <ProviderLogo provider={agent.provider.id} /> : <Plus />}
+                {agent.provider
+                  ? format(t.agent.createDeckWith, { provider: agent.provider.name })
+                  : t.agent.createDeck}
               </Button>
             ) : (
               <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
