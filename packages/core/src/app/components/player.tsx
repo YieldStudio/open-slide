@@ -284,7 +284,9 @@ export function Player({
     if (!fade) return;
     let cancelPaint = () => {};
     const reveal = () => {
-      cancelPaint = afterPaint(() => setCurtainOpaque(false));
+      cancelPaint = afterPaint(() => {
+        if (!exitingRef.current) setCurtainOpaque(false);
+      });
     };
     if (!fullscreen || document.fullscreenElement) {
       reveal();
