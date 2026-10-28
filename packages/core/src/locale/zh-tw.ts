@@ -177,6 +177,8 @@ export const zhTW: Locale = {
     helpAria: '鍵盤快速鍵 (?)',
     exitAria: '離開 (Esc)',
     elapsedTime: '已耗時',
+    endOfShow: '簡報結束',
+    endOfShowHint: '點擊或按 → 結束播放，按 ← 返回',
     helpEyebrow: '簡報模式',
     helpTitle: '鍵盤快速鍵',
     shortcutNext: '下一張',

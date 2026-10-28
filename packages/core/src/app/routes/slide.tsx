@@ -87,6 +87,12 @@ import { PdfProgressToast, PptxProgressToast } from '../components/export-progre
 import { NotesDrawer } from '../components/notes-drawer';
 import { OverviewGrid } from '../components/overview-grid';
 import { openPresenterWindow, Player } from '../components/player';
+import {
+  afterPaint,
+  CURTAIN_FADE_MS,
+  PresentCurtain,
+  whenFullscreenSettled,
+} from '../components/present/curtain';
 import { SlideCanvas } from '../components/slide-canvas';
 import { isDeckWarmed, markDeckWarmed, SlidePreloadLayer } from '../components/slide-preload-layer';
 import { SlideTransitionLayer } from '../components/slide-transition-layer';
@@ -165,6 +171,55 @@ export function Slide() {
   const compactToolbar = useMediaQuery('(max-width: 1023.98px)');
   const narrowToolbar = useMediaQuery('(max-width: 639.98px)');
   const prefersReducedMotion = usePrefersReducedMotion();
+
+  // 'entering' darkens the editor before the Player mounts; 'leaving' keeps
+  // the editor dark after the Player unmounts, then fades it back in.
+  const [curtain, setCurtain] = useState<'entering' | 'leaving' | null>(null);
+  const curtainTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (curtainTimerRef.current) clearTimeout(curtainTimerRef.current);
+    },
+    [],
+  );
+  const present = useCallback(
+    (mode: 'window' | 'fullscreen') => {
+      if (prefersReducedMotion) {
+        setPlayMode(mode);
+        return;
+      }
+      if (curtainTimerRef.current) return;
+      setCurtain('entering');
+      // Fullscreen is requested when the Player mounts; the delay stays well
+      // inside the browser's transient user-activation window.
+      curtainTimerRef.current = setTimeout(() => {
+        curtainTimerRef.current = null;
+        setCurtain(null);
+        setPlayMode(mode);
+      }, CURTAIN_FADE_MS);
+    },
+    [prefersReducedMotion],
+  );
+  const exitPresent = useCallback(() => {
+    setPlayMode(null);
+    if (!prefersReducedMotion) setCurtain('leaving');
+  }, [prefersReducedMotion]);
+  useEffect(() => {
+    if (curtain !== 'leaving' || playMode) return;
+    let cancelPaint = () => {};
+    const reveal = () => {
+      cancelPaint = afterPaint(() => setCurtain(null));
+    };
+    if (!document.fullscreenElement) {
+      reveal();
+      return () => cancelPaint();
+    }
+    const cancelWait = whenFullscreenSettled(reveal);
+    return () => {
+      cancelWait();
+      cancelPaint();
+    };
+  }, [curtain, playMode]);
 
   const modulePages = useMemo(() => slide?.default ?? [], [slide]);
   const [pages, setPages] = useState<typeof modulePages>(modulePages);
@@ -335,7 +390,7 @@ export function Slide() {
     // When showSlideUi is false the read-only <Player> is rendered and owns
     // keyboard navigation (including step-aware advance/retreat). Attaching this
     // page-nav handler too would race it and skip <Steps> reveals, so bail out.
-    if (playMode || !showSlideUi) return;
+    if (playMode || curtain || !showSlideUi) return;
     const onKey = (e: KeyboardEvent) => {
       if (
         isTypingTarget(e.target) ||
@@ -368,12 +423,12 @@ export function Slide() {
         return;
       }
       if (e.key === 'f' || e.key === 'F') {
-        setPlayMode('fullscreen');
+        present('fullscreen');
       } else if (e.key === 'Enter') {
-        setPlayMode('window');
+        present('window');
       } else if (e.key === 'p' || e.key === 'P') {
         if (slideId) openPresenterWindow(slideId);
-        setPlayMode('window');
+        present('window');
       } else if (import.meta.env.DEV && (e.key === 'd' || e.key === 'D')) {
         setDesignOpen((v) => !v);
       } else if (import.meta.env.DEV && (e.key === 'a' || e.key === 'A')) {
@@ -382,7 +437,7 @@ export function Slide() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [index, goTo, playMode, slideId, overviewOpen, toggleAgent]);
+  }, [index, goTo, playMode, curtain, slideId, overviewOpen, toggleAgent, present]);
 
   if (error) {
     return (
@@ -423,8 +478,9 @@ export function Slide() {
           transition={presented.slide.transition}
           index={presented.index}
           onIndexChange={presentReady ? goTo : noop}
-          onExit={() => setPlayMode(null)}
+          onExit={exitPresent}
           controls
+          curtain={!prefersReducedMotion}
           slideId={presented.slideId}
           onSwitchSlide={switchPresentedSlide}
           fullscreen={playMode === 'fullscreen'}
@@ -801,7 +857,7 @@ export function Slide() {
                     size="sm"
                     variant="brand"
                     aria-label={t.slide.present}
-                    onClick={() => setPlayMode(isMobile ? 'window' : 'fullscreen')}
+                    onClick={() => present(isMobile ? 'window' : 'fullscreen')}
                     className="rounded-r-none px-2.5 lg:px-3"
                   >
                     <Play className="size-3.5 fill-current" />
@@ -821,12 +877,12 @@ export function Slide() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="min-w-[200px]">
                       <DropdownMenuGroup>
-                        <DropdownMenuItem onClick={() => setPlayMode('window')}>
+                        <DropdownMenuItem onClick={() => present('window')}>
                           <Play />
                           {t.slide.presentInWindow}
                           <DropdownMenuShortcut>↵</DropdownMenuShortcut>
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setPlayMode('fullscreen')}>
+                        <DropdownMenuItem onClick={() => present('fullscreen')}>
                           <Maximize />
                           {t.slide.presentFullscreen}
                           <DropdownMenuShortcut>F</DropdownMenuShortcut>
@@ -834,7 +890,7 @@ export function Slide() {
                         <DropdownMenuItem
                           onClick={() => {
                             if (slideId) openPresenterWindow(slideId);
-                            setPlayMode('window');
+                            present('window');
                           }}
                         >
                           <MonitorSpeaker />
@@ -957,11 +1013,11 @@ export function Slide() {
               currentIndex={index}
               exporting={exporting}
               handlers={{
-                onPresentWindow: () => setPlayMode('window'),
-                onPresentFullscreen: () => setPlayMode('fullscreen'),
+                onPresentWindow: () => present('window'),
+                onPresentFullscreen: () => present('fullscreen'),
                 onPresenterView: () => {
                   if (slideId) openPresenterWindow(slideId);
-                  setPlayMode('window');
+                  present('window');
                 },
                 onCopyLink: copyLink,
                 onOverview: () => setOverviewOpen(true),
@@ -976,6 +1032,7 @@ export function Slide() {
             />
           )}
         </div>
+        <PresentCurtain opaque={curtain !== null} className="fixed z-[1000]" />
       </InspectorProvider>
     </HistoryProvider>
   );

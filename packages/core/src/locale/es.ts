@@ -180,6 +180,8 @@ export const es: Locale = {
     helpAria: 'Atajos de teclado (?)',
     exitAria: 'Salir (Esc)',
     elapsedTime: 'Tiempo transcurrido',
+    endOfShow: 'Fin de la presentación',
+    endOfShowHint: 'Haz clic o pulsa → para salir, ← para volver',
     helpEyebrow: 'Modo presentación',
     helpTitle: 'Atajos de teclado',
     shortcutNext: 'Diapositiva siguiente',

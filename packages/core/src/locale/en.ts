@@ -178,6 +178,8 @@ export const en: Locale = {
     helpAria: 'Keyboard shortcuts (?)',
     exitAria: 'Exit (Esc)',
     elapsedTime: 'Elapsed time',
+    endOfShow: 'End of slideshow',
+    endOfShowHint: 'Click or press → to exit, ← to go back',
     helpEyebrow: 'Present mode',
     helpTitle: 'Keyboard shortcuts',
     shortcutNext: 'Next slide',

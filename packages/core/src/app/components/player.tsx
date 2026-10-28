@@ -12,6 +12,13 @@ import { usePrefersReducedMotion } from '../lib/use-prefers-reduced-motion';
 import { OverviewGrid } from './overview-grid';
 import { PresentBlackoutOverlay } from './present/blackout-overlay';
 import { PresentControlBar } from './present/control-bar';
+import {
+  afterPaint,
+  CURTAIN_FADE_MS,
+  PresentCurtain,
+  whenFullscreenSettled,
+} from './present/curtain';
+import { PresentEndScreen } from './present/end-screen';
 import { PresentHelpOverlay } from './present/help-overlay';
 import { PresentJumpInput } from './present/jump-input';
 import { PresentLaserPointer } from './present/laser-pointer';
@@ -48,6 +55,8 @@ type Props = {
    * without entering fullscreen. Defaults to true for back-compat.
    */
   fullscreen?: boolean;
+  /** Fade in from black on mount and fade to black before calling `onExit`. */
+  curtain?: boolean;
 };
 
 export function Player({
@@ -62,9 +71,13 @@ export function Player({
   slideId,
   onSwitchSlide,
   fullscreen = true,
+  curtain = false,
 }: Props) {
   const isMobile = useIsMobile();
   const prefersReducedMotion = usePrefersReducedMotion();
+  const fade = curtain && !prefersReducedMotion;
+  const [curtainOpaque, setCurtainOpaque] = useState(fade);
+  const exitingRef = useRef(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
   // Mirrored as state so descendants portaling *into* the player subtree
   // (tooltips, popovers — the body is outside the fullscreen tree) re-render
@@ -90,8 +103,14 @@ export function Player({
   const windowedRef = useRef(windowed);
   windowedRef.current = windowed;
 
-  const canPrev = index > 0;
-  const canNext = index < pages.length - 1;
+  // Past the last slide the deck shows an end screen first, so an extra
+  // "next" reads as "the talk is over" rather than a frozen player; the
+  // following "next" leaves present mode.
+  const endScreenEnabled = controls && allowExit;
+  const [ended, setEnded] = useState(false);
+
+  const canPrev = index > 0 || ended;
+  const canNext = index < pages.length - 1 || endScreenEnabled;
 
   const stepControllerRef = useRef<StepController | null>(null);
   const [entryDirection, setEntryDirection] = useState<EntryDirection>('jump');
@@ -109,6 +128,7 @@ export function Player({
   // synchronously, before the incoming page's <Steps> reads it on mount.
   const handleIndexChange = useCallback(
     (next: number) => {
+      setEnded(false);
       const delta = next - index;
       setEntryDirection(delta === 1 ? 'forward' : delta === -1 ? 'backward' : 'jump');
       onIndexChange(next);
@@ -116,14 +136,41 @@ export function Player({
     [index, onIndexChange],
   );
 
+  const exitTimerRef = useRef<number | null>(null);
+  useEffect(
+    () => () => {
+      if (exitTimerRef.current !== null) window.clearTimeout(exitTimerRef.current);
+    },
+    [],
+  );
+  const requestExit = useCallback(() => {
+    if (!fade) {
+      onExit();
+      return;
+    }
+    if (exitingRef.current) return;
+    exitingRef.current = true;
+    setCurtainOpaque(true);
+    exitTimerRef.current = window.setTimeout(onExit, CURTAIN_FADE_MS);
+  }, [fade, onExit]);
+
   const goPrev = useCallback(() => {
+    if (ended) {
+      setEnded(false);
+      return;
+    }
     if (stepControllerRef.current?.retreat()) return;
     if (index > 0) handleIndexChange(index - 1);
-  }, [index, handleIndexChange]);
+  }, [ended, index, handleIndexChange]);
   const goNext = useCallback(() => {
+    if (ended) {
+      requestExit();
+      return;
+    }
     if (stepControllerRef.current?.advance()) return;
     if (index < pages.length - 1) handleIndexChange(index + 1);
-  }, [index, pages.length, handleIndexChange]);
+    else if (endScreenEnabled) setEnded(true);
+  }, [ended, index, pages.length, handleIndexChange, endScreenEnabled, requestExit]);
 
   const overlayActive = controls && (overviewOpen || helpOpen);
   const overlayActiveRef = useRef(overlayActive);
@@ -189,7 +236,8 @@ export function Player({
     ref: rootRef,
     enabled: !overlayActive,
     canPrev,
-    canNext,
+    // Trackpad momentum would blow straight through the end screen.
+    canNext: canNext && !ended,
     onPrev: goPrev,
     onNext: goNext,
   });
@@ -216,11 +264,31 @@ export function Player({
   useEffect(() => {
     if (!allowExit) return;
     const onFsChange = () => {
-      if (!document.fullscreenElement && !windowedRef.current) onExit();
+      if (!document.fullscreenElement && !windowedRef.current) requestExit();
     };
     document.addEventListener('fullscreenchange', onFsChange);
     return () => document.removeEventListener('fullscreenchange', onFsChange);
-  }, [onExit, allowExit]);
+  }, [requestExit, allowExit]);
+
+  // Wait out the browser's own fullscreen animation before revealing the
+  // first slide, otherwise the fade plays while the screen is still resizing.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs once on mount
+  useEffect(() => {
+    if (!fade) return;
+    let cancelPaint = () => {};
+    const reveal = () => {
+      cancelPaint = afterPaint(() => setCurtainOpaque(false));
+    };
+    if (!fullscreen || document.fullscreenElement) {
+      reveal();
+      return () => cancelPaint();
+    }
+    const cancelWait = whenFullscreenSettled(reveal);
+    return () => {
+      cancelWait();
+      cancelPaint();
+    };
+  }, []);
 
   const toggleFullscreen = useCallback(() => {
     setWindowed((w) => !w);
@@ -296,7 +364,7 @@ export function Player({
           setBlackout(null);
           return;
         }
-        if (allowExit) onExit();
+        if (allowExit) requestExit();
         return;
       }
 
@@ -364,7 +432,7 @@ export function Player({
     helpOpen,
     blackout,
     allowExit,
-    onExit,
+    requestExit,
     goNext,
     goPrev,
     handleIndexChange,
@@ -423,6 +491,7 @@ export function Player({
         <div data-osd-chrome style={{ display: 'contents' }}>
           <PresentProgressBar index={index} total={pages.length} visible={chromeVisible} />
           <PresentBlackoutOverlay mode={blackout} />
+          <PresentEndScreen open={ended} onExit={requestExit} />
           <PresentJumpInput pageCount={pages.length} onJump={handleIndexChange} />
           <PresentLaserPointer enabled={laser} />
           <PresentControlBar
@@ -444,7 +513,7 @@ export function Player({
             onPresenter={() => slideId && openPresenterWindow(slideId)}
             onToggleFullscreen={toggleFullscreen}
             onHelp={() => setHelpOpen(true)}
-            onExit={onExit}
+            onExit={requestExit}
           />
           <OverviewGrid
             pages={pages}
@@ -460,6 +529,8 @@ export function Player({
           <PresentHelpOverlay open={helpOpen} onOpenChange={setHelpOpen} container={rootEl} />
         </div>
       )}
+
+      {fade && <PresentCurtain opaque={curtainOpaque} className="absolute z-[100]" />}
     </div>
   );
 }
