@@ -18,10 +18,10 @@ import {
   PresentCurtain,
   whenFullscreenSettled,
 } from './present/curtain';
-import { PresentEndScreen } from './present/end-screen';
 import { PresentHelpOverlay } from './present/help-overlay';
 import { PresentJumpInput } from './present/jump-input';
 import { PresentLaserPointer } from './present/laser-pointer';
+import { PresentLastSlideHint } from './present/last-slide-hint';
 import { PresentProgressBar } from './present/progress-bar';
 import { useIdle } from './present/use-idle';
 import { usePointerNearBottom } from './present/use-pointer-near-bottom';
@@ -103,14 +103,30 @@ export function Player({
   const windowedRef = useRef(windowed);
   windowedRef.current = windowed;
 
-  // Past the last slide the deck shows an end screen first, so an extra
-  // "next" reads as "the talk is over" rather than a frozen player; the
-  // following "next" leaves present mode.
-  const endScreenEnabled = controls && allowExit;
-  const [ended, setEnded] = useState(false);
+  const canPrev = index > 0;
+  const canNext = index < pages.length - 1;
 
-  const canPrev = index > 0 || ended;
-  const canNext = index < pages.length - 1 || endScreenEnabled;
+  // Stepping past either end nudges the slide like a rubber band so the
+  // press visibly registered; past the last slide a hint says how to leave.
+  const nudgeRef = useRef<HTMLDivElement | null>(null);
+  const [lastSlideHintAt, setLastSlideHintAt] = useState(0);
+  const bumpEdge = useCallback(
+    (direction: 'start' | 'end') => {
+      if (!controls) return;
+      if (direction === 'end') setLastSlideHintAt(Date.now());
+      if (prefersReducedMotion) return;
+      const offset = direction === 'end' ? -14 : 14;
+      nudgeRef.current?.animate(
+        [
+          { transform: 'translateX(0)' },
+          { transform: `translateX(${offset}px)`, offset: 0.3 },
+          { transform: 'translateX(0)' },
+        ],
+        { duration: 360, easing: 'cubic-bezier(0.2, 0.8, 0.3, 1)' },
+      );
+    },
+    [controls, prefersReducedMotion],
+  );
 
   const stepControllerRef = useRef<StepController | null>(null);
   const [entryDirection, setEntryDirection] = useState<EntryDirection>('jump');
@@ -128,7 +144,6 @@ export function Player({
   // synchronously, before the incoming page's <Steps> reads it on mount.
   const handleIndexChange = useCallback(
     (next: number) => {
-      setEnded(false);
       const delta = next - index;
       setEntryDirection(delta === 1 ? 'forward' : delta === -1 ? 'backward' : 'jump');
       onIndexChange(next);
@@ -155,22 +170,15 @@ export function Player({
   }, [fade, onExit]);
 
   const goPrev = useCallback(() => {
-    if (ended) {
-      setEnded(false);
-      return;
-    }
     if (stepControllerRef.current?.retreat()) return;
     if (index > 0) handleIndexChange(index - 1);
-  }, [ended, index, handleIndexChange]);
+    else bumpEdge('start');
+  }, [index, handleIndexChange, bumpEdge]);
   const goNext = useCallback(() => {
-    if (ended) {
-      requestExit();
-      return;
-    }
     if (stepControllerRef.current?.advance()) return;
     if (index < pages.length - 1) handleIndexChange(index + 1);
-    else if (endScreenEnabled) setEnded(true);
-  }, [ended, index, pages.length, handleIndexChange, endScreenEnabled, requestExit]);
+    else bumpEdge('end');
+  }, [index, pages.length, handleIndexChange, bumpEdge]);
 
   const overlayActive = controls && (overviewOpen || helpOpen);
   const overlayActiveRef = useRef(overlayActive);
@@ -225,8 +233,8 @@ export function Player({
   useClickPageNavigation({
     ref: rootRef,
     enabled: !overlayActive,
-    canPrev,
-    canNext,
+    canPrev: canPrev || controls,
+    canNext: canNext || controls,
     onPrev: goPrev,
     onNext: goNext,
     onViewportClick: controls && isMobile ? handleMobileViewportClick : undefined,
@@ -236,8 +244,7 @@ export function Player({
     ref: rootRef,
     enabled: !overlayActive,
     canPrev,
-    // Trackpad momentum would blow straight through the end screen.
-    canNext: canNext && !ended,
+    canNext,
     onPrev: goPrev,
     onNext: goNext,
   });
@@ -471,27 +478,29 @@ export function Player({
         controls && (hideCursor ? 'cursor-none' : 'cursor-default'),
       )}
     >
-      <SlideCanvas flat design={design}>
-        {/* Keyed per deck so a presenter-driven deck switch cuts instead of
+      <div ref={nudgeRef} className="h-full w-full">
+        <SlideCanvas flat design={design}>
+          {/* Keyed per deck so a presenter-driven deck switch cuts instead of
             animating a transition between two unrelated decks. */}
-        <SlideTransitionLayer
-          key={slideId}
-          pages={pages}
-          index={index}
-          total={pages.length}
-          moduleTransition={transition}
-          disabled={prefersReducedMotion}
-          stepControllerRef={stepControllerRef}
-          entryDirection={entryDirection}
-          onStepAggregateChange={handleAggregateChange}
-        />
-      </SlideCanvas>
+          <SlideTransitionLayer
+            key={slideId}
+            pages={pages}
+            index={index}
+            total={pages.length}
+            moduleTransition={transition}
+            disabled={prefersReducedMotion}
+            stepControllerRef={stepControllerRef}
+            entryDirection={entryDirection}
+            onStepAggregateChange={handleAggregateChange}
+          />
+        </SlideCanvas>
+      </div>
 
       {controls && (
         <div data-osd-chrome style={{ display: 'contents' }}>
           <PresentProgressBar index={index} total={pages.length} visible={chromeVisible} />
           <PresentBlackoutOverlay mode={blackout} />
-          <PresentEndScreen open={ended} onExit={requestExit} />
+          <PresentLastSlideHint shownAt={lastSlideHintAt} />
           <PresentJumpInput pageCount={pages.length} onJump={handleIndexChange} />
           <PresentLaserPointer enabled={laser} />
           <PresentControlBar
