@@ -1,3 +1,4 @@
+import config from 'virtual:open-slide/config';
 import { Eye, MessageSquare, PanelRight, Pencil } from 'lucide-react';
 import {
   createContext,
@@ -40,6 +41,12 @@ export type SelectedTarget = {
 };
 
 const INSTANCE_ID_ATTR = 'data-slide-instance-id';
+
+const AUTOSAVE_DELAY_MS = (() => {
+  const autosave = config.editor?.autosave;
+  if (typeof autosave === 'number' && autosave > 0) return autosave;
+  return autosave === true ? 600 : 0;
+})();
 
 function elementPath(root: Element, el: Element): number[] | null {
   const path: number[] = [];
@@ -1078,6 +1085,23 @@ export function InspectorProvider({
       history.clear();
     }
   }, [applyEdits, history, refreshCount, t]);
+
+  // A save the server refused (a lock, a stale location) stays pending; it
+  // waits for the user's next edit instead of retrying, and toasting, forever.
+  const autosaveBlockedAtRef = useRef(-1);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `opsVersion` restarts the pause on every new edit
+  useEffect(() => {
+    if (!AUTOSAVE_DELAY_MS || !active || pendingCount === 0 || committing || inlineEdit) return;
+    if (autosaveBlockedAtRef.current === pendingSeqRef.current) return;
+    const timer = setTimeout(() => {
+      commitEdits()
+        .catch(() => undefined)
+        .finally(() => {
+          autosaveBlockedAtRef.current = pendingRef.current.size > 0 ? pendingSeqRef.current : -1;
+        });
+    }, AUTOSAVE_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [opsVersion, pendingCount, committing, inlineEdit, active, commitEdits]);
 
   const cancelEdits = useCallback(() => {
     if (pendingRef.current.size === 0) {

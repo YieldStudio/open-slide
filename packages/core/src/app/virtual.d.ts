@@ -15,6 +15,7 @@ declare module 'virtual:open-slide/config' {
     port?: number;
     locale?: Locale;
     version: string;
+    editor?: { autosave?: boolean | number };
     build: {
       showSlideBrowser: boolean;
       showSlideUi: boolean;

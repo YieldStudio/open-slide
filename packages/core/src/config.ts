@@ -7,6 +7,15 @@ export type OpenSlideBuildConfig = {
   allowHtmlDownload?: boolean;
 };
 
+export type OpenSlideEditorConfig = {
+  /**
+   * Save inspector edits on their own once editing pauses, instead of waiting
+   * for Save. `true` waits 600 ms; a number sets the pause in milliseconds.
+   * Text being typed is saved when the text editor closes.
+   */
+  autosave?: boolean | number;
+};
+
 export type OpenSlideAgentConfig = {
   enabled?: boolean;
 };
@@ -26,6 +35,7 @@ export type OpenSlideConfig = {
   locale?: Locale;
   build?: OpenSlideBuildConfig;
   agent?: OpenSlideAgentConfig;
+  editor?: OpenSlideEditorConfig;
   /** Extra Vite plugins, appended after open-slide's own. */
   vitePlugins?: PluginOption[];
 };
