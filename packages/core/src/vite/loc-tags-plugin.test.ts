@@ -1,17 +1,18 @@
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createLocSpace, type LocSpace } from '../editing/loc-space.ts';
 import { injectLocTags, locTagsPlugin } from './loc-tags-plugin.ts';
 
 const pluginTransformSource = 'export default [() => <div />];';
 
 type LocTagsTransformResult = null | { code: string; map: null };
 
-function transformWithLocTags(id: string) {
+function transformWithLocTags(id: string, locSpace?: LocSpace) {
   // Force `path.resolve` to return a POSIX slidesRoot so this suite
   // exercises the same code path regardless of host OS.
   const resolveSpy = vi.spyOn(path, 'resolve').mockReturnValue('/repo/slides');
   try {
-    const plugin = locTagsPlugin({ userCwd: '/repo' });
+    const plugin = locTagsPlugin({ userCwd: '/repo', locSpace });
     const transform = plugin.transform;
     if (typeof transform !== 'function') throw new Error('expected transform function');
     return transform.call({} as never, pluginTransformSource, id) as LocTagsTransformResult;
@@ -159,6 +160,18 @@ describe('locTagsPlugin', () => {
 
   it('skips colocated test files', () => {
     expect(transformWithLocTags('/repo/slides/cover/index.test.tsx')).toBeNull();
+  });
+
+  it('keeps entry locs on their source line', () => {
+    const out = transformWithLocTags('/repo/slides/cover/index.tsx', createLocSpace());
+    expect(out?.code).toContain('data-slide-loc="1:22"');
+  });
+
+  it('shifts locs from other deck files into a band the loc space can decode', () => {
+    const locSpace = createLocSpace();
+    const out = transformWithLocTags('/repo/slides/cover/pages/intro.tsx', locSpace);
+    expect(out?.code).toContain('data-slide-loc="1000001:22"');
+    expect(locSpace.decode('cover', 1_000_001)).toEqual({ file: 'pages/intro.tsx', line: 1 });
   });
 });
 

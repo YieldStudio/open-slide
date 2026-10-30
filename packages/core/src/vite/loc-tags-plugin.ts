@@ -2,6 +2,7 @@ import path from 'node:path';
 import * as t from '@babel/types';
 import type { Plugin } from 'vite';
 import { tryParse, walkJsx } from '../editing/babel-walk.ts';
+import { createLocSpace, type LocSpace } from '../editing/loc-space.ts';
 
 // Inject `data-slide-loc="<line>:<col>"` onto every host JSX element in
 // slide source files so the inspector can map a click straight to a
@@ -23,7 +24,10 @@ function alreadyTagged(opening: t.JSXOpeningElement): boolean {
   );
 }
 
-export function injectLocTags(code: string): string | null {
+export function injectLocTags(
+  code: string,
+  encodeLine: (line: number) => number = (line) => line,
+): string | null {
   const ast = tryParse(code);
   if (!ast) return null;
 
@@ -35,7 +39,7 @@ export function injectLocTags(code: string): string | null {
     if (!isTaggableJsxName(name) || alreadyTagged(opening)) return;
     insertions.push({
       offset: name.end ?? 0,
-      text: ` data-slide-loc="${node.loc.start.line}:${node.loc.start.column}"`,
+      text: ` data-slide-loc="${encodeLine(node.loc.start.line)}:${node.loc.start.column}"`,
     });
   });
 
@@ -51,23 +55,30 @@ export function injectLocTags(code: string): string | null {
 export type LocTagsPluginOptions = {
   userCwd: string;
   slidesDir?: string;
+  locSpace?: LocSpace;
 };
 
 // Vite normally hands `id` to plugins with forward slashes, but other
 // plugins or virtual modules can pass through Windows-style paths.
 // Compare both sides in POSIX shape so the match doesn't depend on
 // which separator the caller happened to use.
-function isSlideSourceFile(id: string, slidesRootPosix: string): boolean {
+function slideSourceFile(
+  id: string,
+  slidesRootPosix: string,
+): { slideId: string; file: string } | null {
   const filePath = id.split(/[?#]/)[0].replace(/\\/g, '/');
-  if (!filePath.startsWith(`${slidesRootPosix}/`)) return false;
-  if (!filePath.endsWith('.tsx')) return false;
-  if (filePath.endsWith('.d.ts') || filePath.endsWith('.test.tsx')) return false;
+  if (!filePath.startsWith(`${slidesRootPosix}/`)) return null;
+  if (!filePath.endsWith('.tsx')) return null;
+  if (filePath.endsWith('.d.ts') || filePath.endsWith('.test.tsx')) return null;
   const rel = filePath.slice(slidesRootPosix.length + 1);
-  return rel.includes('/');
+  const slash = rel.indexOf('/');
+  if (slash === -1) return null;
+  return { slideId: rel.slice(0, slash), file: rel.slice(slash + 1) };
 }
 
 export function locTagsPlugin(opts: LocTagsPluginOptions): Plugin {
   const slidesRoot = path.resolve(opts.userCwd, opts.slidesDir ?? 'slides').replace(/\\/g, '/');
+  const locSpace = opts.locSpace ?? createLocSpace();
   return {
     name: 'open-slide:loc-tags',
     apply: 'serve',
@@ -75,8 +86,11 @@ export function locTagsPlugin(opts: LocTagsPluginOptions): Plugin {
     // sees our injected attributes.
     enforce: 'pre',
     transform(code, id) {
-      if (!isSlideSourceFile(id, slidesRoot)) return null;
-      const next = injectLocTags(code);
+      const source = slideSourceFile(id, slidesRoot);
+      if (!source) return null;
+      const next = injectLocTags(code, (line) =>
+        locSpace.encode(source.slideId, source.file, line),
+      );
       if (next === null) return null;
       return { code: next, map: null };
     },

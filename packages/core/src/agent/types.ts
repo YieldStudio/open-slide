@@ -122,7 +122,13 @@ export type AgentTurnContext = {
   pageNumber?: number;
   totalPages?: number;
   pendingComments?: number;
-  selection?: { line: number; column: number; tagName: string; text: string } | null;
+  selection?: {
+    line: number;
+    column: number;
+    tagName: string;
+    text: string;
+    file?: string;
+  } | null;
   newDeck?: boolean;
 };
 

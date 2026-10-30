@@ -37,6 +37,7 @@ Path is relative to the project root (the user's `cwd`, the directory that conta
   "view": "slides",
   "pagePath": "slides/q2-roadmap/index.tsx",
   "selection": {
+    "file": "slides/q2-roadmap/index.tsx",
     "line": 42,
     "column": 6,
     "tagName": "h1",
@@ -52,7 +53,8 @@ Path is relative to the project root (the user's `cwd`, the directory that conta
 - `pagePath` — relative path to the slide source. Hand straight to `Read` / `Edit`.
 - `view` — `"slides"` (canvas view) or `"assets"` (asset manager). If `"assets"`, the user is browsing files for that slide rather than viewing a page.
 - `selection` — `null` if nothing is selected. Otherwise, the JSX element the user picked in the inspector overlay:
-  - `line` (1-indexed) and `column` (0-indexed) point to the JSX opening tag inside `pagePath`. This is the canonical handle — match against the source line, not the rendered DOM.
+  - `file` is the source file that holds the element — `pagePath` itself, or another file of the deck when pages are split across files. Read and edit this file, not `pagePath`.
+  - `line` (1-indexed) and `column` (0-indexed) point to the JSX opening tag inside `file`. This is the canonical handle — match against the source line, not the rendered DOM.
   - `tagName` is the rendered DOM tag, lowercased (`"h1"`, `"div"`, `"img"`).
   - `text` is a trimmed text snippet (≤120 chars) from the element's `textContent`, useful as a sanity check that you're looking at the right node.
   - Selection auto-clears whenever the user navigates to a different slide or page.
@@ -104,7 +106,7 @@ If `current.json` is missing or stale, ask: "Which slide and page should I tight
 User: "make this bigger"
 
 1. Read `node_modules/.open-slide/current.json`.
-2. If `selection` is non-null, the user means that element. Read `pagePath`, jump to `selection.line`, and find the JSX opening tag near that line/column. Confirm with the snippet in `selection.text` and the `tagName`.
+2. If `selection` is non-null, the user means that element. Read `selection.file`, jump to `selection.line`, and find the JSX opening tag near that line/column. Confirm with the snippet in `selection.text` and the `tagName`.
 3. Consult `slide-authoring` for type-scale and layout rules before editing.
 4. Edit the JSX node in place.
 

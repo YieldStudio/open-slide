@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import type { InlineConfig } from 'vite';
+import { createLocSpace } from '../editing/loc-space.ts';
 import { apiPlugin } from './api-plugin.ts';
 import { currentPlugin } from './current-plugin.ts';
 import { designPlugin } from './design-plugin.ts';
@@ -68,6 +69,7 @@ export async function createViteConfig(opts: CreateViteConfigOptions): Promise<I
   const slidesAbs = path.resolve(userCwd, slidesDir);
   const themesAbs = path.resolve(userCwd, themesDir);
   const assetsAbs = path.resolve(userCwd, assetsDir);
+  const locSpace = createLocSpace();
 
   return {
     base: config.base ?? '/',
@@ -75,7 +77,7 @@ export async function createViteConfig(opts: CreateViteConfigOptions): Promise<I
     configFile: false,
     envDir: userCwd,
     plugins: [
-      locTagsPlugin({ userCwd, slidesDir }),
+      locTagsPlugin({ userCwd, slidesDir, locSpace }),
       react(),
       tailwindcss(),
       openSlidePlugin({ userCwd, config, coreVersion: CORE_VERSION }),
@@ -87,9 +89,10 @@ export async function createViteConfig(opts: CreateViteConfigOptions): Promise<I
         assetsDir,
         coreVersion: CORE_VERSION,
         agentEnabled: config.agent?.enabled ?? true,
+        locSpace,
       }),
       notesPlugin({ userCwd, slidesDir }),
-      currentPlugin({ userCwd, slidesDir }),
+      currentPlugin({ userCwd, slidesDir, locSpace }),
       serverInfoPlugin({ userCwd }),
     ],
     resolve: {

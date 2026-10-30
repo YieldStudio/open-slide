@@ -54,8 +54,9 @@ function contextLines(context: AgentTurnContext | undefined): string[] {
   }
   if (context.selection) {
     const { line, column, tagName, text } = context.selection;
+    const selectionFile = context.selection.file ?? file;
     lines.push(
-      `They have selected a <${escapeTag(tagName)}> element at ${file}:${line}:${column}.${text ? ' Its text is in <selected-text>.' : ''} "This element" refers to it.`,
+      `They have selected a <${escapeTag(tagName)}> element at ${selectionFile}:${line}:${column}.${text ? ' Its text is in <selected-text>.' : ''} "This element" refers to it.`,
     );
     if (text) lines.push(`<selected-text>${escapeTag(text)}</selected-text>`);
   }

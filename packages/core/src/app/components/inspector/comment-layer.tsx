@@ -26,6 +26,7 @@ import { IS_APPLE, isTypingTarget } from '@/lib/keys';
 import { format, plural, useLocale } from '@/lib/use-locale';
 import { cn } from '@/lib/utils';
 import { applyCommentsPrompt } from '../../../agent/prompt';
+import { sourceLine } from '../../../editing/loc-space';
 import { type SelectedTarget, useInspector } from './inspector-provider';
 
 type ScreenRect = { left: number; top: number; width: number; height: number };
@@ -734,7 +735,7 @@ function CommentPin({
     open ? 'editor' : hovered ? 'preview' : null,
   );
   const card = placeBeside(anchor, cardSize, bounds);
-  const meta = `${format(t.inspector.commentLineLabel, { n: comment.line })}${
+  const meta = `${format(t.inspector.commentLineLabel, { n: sourceLine(comment.line) })}${
     region ? ` · ${t.inspector.commentRegionLabel}` : ''
   }`;
   return (

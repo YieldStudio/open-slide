@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { withFileLock } from './context.ts';
+import { createLocSpace } from '../../editing/loc-space.ts';
+import { makeContext, resolveSlideLoc, withFileLock } from './context.ts';
 
 describe('withFileLock', () => {
   it('runs tasks on the same file one after another', async () => {
@@ -35,5 +36,36 @@ describe('withFileLock', () => {
     });
     await expect(failed).rejects.toThrow('boom');
     await expect(withFileLock('/g', async () => 'ok')).resolves.toBe('ok');
+  });
+});
+
+describe('resolveSlideLoc', () => {
+  const locSpace = createLocSpace();
+  const ctx = makeContext({
+    userCwd: '/repo',
+    coreVersion: '0.0.0',
+    agentEnabled: false,
+    locSpace,
+  });
+
+  it('maps an entry line to index.tsx', () => {
+    expect(resolveSlideLoc(ctx, 'deck', 7)).toMatchObject({
+      file: 'index.tsx',
+      path: '/repo/slides/deck/index.tsx',
+      line: 7,
+    });
+  });
+
+  it('maps a banded line to its deck file', () => {
+    const line = locSpace.encode('deck', 'pages/intro.tsx', 7);
+    expect(resolveSlideLoc(ctx, 'deck', line)).toMatchObject({
+      path: '/repo/slides/deck/pages/intro.tsx',
+      line: 7,
+    });
+  });
+
+  it('refuses files that escape the deck folder', () => {
+    const line = locSpace.encode('deck', '../other/index.tsx', 7);
+    expect(resolveSlideLoc(ctx, 'deck', line)).toBeNull();
   });
 });

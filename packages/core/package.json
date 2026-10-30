@@ -32,6 +32,7 @@
     "src/agent/prompt.ts",
     "src/agent/provider.ts",
     "src/agent/types.ts",
+    "src/editing/loc-space.ts",
     "src/editing/placeholder-id.ts",
     "!src/**/*.test.ts",
     "!src/**/*.test.tsx",

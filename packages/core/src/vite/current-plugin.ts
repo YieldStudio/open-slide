@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import type { Plugin, ViteDevServer } from 'vite';
+import { createLocSpace, type LocSpace } from '../editing/loc-space.ts';
 import { SLIDE_ID_RE } from '../editing/slide-ops.ts';
 
 const TEXT_SNIPPET_MAX = 120;
@@ -8,6 +9,7 @@ const TEXT_SNIPPET_MAX = 120;
 export type CurrentPluginOptions = {
   userCwd: string;
   slidesDir?: string;
+  locSpace?: LocSpace;
 };
 
 type IncomingPayload = {
@@ -27,6 +29,7 @@ type IncomingSelection = {
 };
 
 type Selection = {
+  file?: string;
   line: number;
   column: number;
   tagName: string;
@@ -70,7 +73,16 @@ export function currentPlugin(opts: CurrentPluginOptions): Plugin {
   const outFile = path.join(outDir, 'current.json');
   const tmpFile = `${outFile}.tmp`;
 
+  const locSpace = opts.locSpace ?? createLocSpace();
   let cached: Cached | null = null;
+
+  const locate = (slideId: string, selection: Selection | null): Selection | null => {
+    if (!selection) return null;
+    const loc = locSpace.decode(slideId, selection.line);
+    if (!loc) return null;
+    const file = path.join(slidesDir, slideId, loc.file).split(path.sep).join('/');
+    return { file, ...selection, line: loc.line };
+  };
 
   return {
     name: 'open-slide:current',
@@ -122,7 +134,7 @@ export function currentPlugin(opts: CurrentPluginOptions): Plugin {
         }
 
         if ('selection' in raw) {
-          next.selection = parseSelection(raw.selection);
+          next.selection = locate(next.slideId, parseSelection(raw.selection));
         }
 
         if (!next.slideId) return;

@@ -47,6 +47,7 @@ import type { EditOp } from '@/lib/inspector/use-editor';
 import { useAgentSocketConnected } from '@/lib/use-agent-socket';
 import { format, useLocale } from '@/lib/use-locale';
 import { round2 } from '@/lib/utils';
+import { sourceLine } from '../../../editing/loc-space';
 import type { Locale } from '../../../locale/types';
 import { ArrangePanel } from './arrange-panel';
 import { AssetPickerDialog } from './asset-picker-dialog';
@@ -258,7 +259,8 @@ export function InspectorPanel({
       <CollapsibleSection title={t.inspector.sourceSection}>
         <div className="flex items-center justify-between gap-2">
           <span className="font-mono text-[10.5px] text-muted-foreground">
-            &lt;{selected.anchor.tagName.toLowerCase()}&gt; · {selected.line}:{selected.column}
+            &lt;{selected.anchor.tagName.toLowerCase()}&gt; · {sourceLine(selected.line)}:
+            {selected.column}
           </span>
           <AgentWatchingBadge />
         </div>

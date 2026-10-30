@@ -32,7 +32,7 @@ import { readManifest, writeManifest } from '../../files/folders.ts';
 import { isLoopbackRequest, validateMutationRequest } from '../../http/request-guard.ts';
 import { invalidateSlidesModule } from '../open-slide-plugin.ts';
 import { recordWrite } from '../recent-writes.ts';
-import { type ApiContext, BodyTooLargeError, json, readBody } from './context.ts';
+import { type ApiContext, BodyTooLargeError, json, locateSelection, readBody } from './context.ts';
 import { detectPackageManager } from './update.ts';
 
 // GET    /__agent/status                      → AgentStatus
@@ -46,7 +46,7 @@ import { detectPackageManager } from './update.ts';
 // POST   /__agent/sessions/:id/respond        { itemId, answers? | allow? | cancel?, context?, autoApprove?, model?, effort? } → { ok }
 // GET    /__agent/events                      → server-sent turn progress
 
-function parseContext(raw: unknown): AgentTurnContext | undefined {
+function parseContext(api: ApiContext, raw: unknown): AgentTurnContext | undefined {
   if (!raw || typeof raw !== 'object') return undefined;
   const r = raw as Record<string, unknown>;
   const ctx: AgentTurnContext = {};
@@ -66,12 +66,13 @@ function parseContext(raw: unknown): AgentTurnContext | undefined {
   if (sel && typeof sel === 'object') {
     const s = sel as Record<string, unknown>;
     if (typeof s.line === 'number' && typeof s.column === 'number') {
-      ctx.selection = {
+      const selection = {
         line: Math.max(1, Math.floor(s.line)),
         column: Math.max(0, Math.floor(s.column)),
         tagName: typeof s.tagName === 'string' ? s.tagName.slice(0, 32) : 'element',
         text: typeof s.text === 'string' ? s.text.slice(0, 120) : '',
       };
+      ctx.selection = ctx.slideId ? locateSelection(api, ctx.slideId, selection) : selection;
     }
   }
   return ctx;
@@ -158,9 +159,9 @@ function parseRespond(raw: unknown): RespondPayload | null {
   return null;
 }
 
-function parseTurnSettings(raw: Record<string, unknown>): TurnSettings {
+function parseTurnSettings(api: ApiContext, raw: Record<string, unknown>): TurnSettings {
   const settings: TurnSettings = {};
-  const context = parseContext(raw.context);
+  const context = parseContext(api, raw.context);
   if (context) settings.context = context;
   if (typeof raw.autoApprove === 'boolean') settings.autoApprove = raw.autoApprove;
   if ('model' in raw) settings.model = parseModel(raw.model);
@@ -315,7 +316,7 @@ export function registerAgentRoutes(server: ViteDevServer, ctx: ApiContext): voi
           }
           await runner.send(id, {
             text: body.text,
-            context: parseContext(body.context),
+            context: parseContext(ctx, body.context),
             autoApprove: body.autoApprove === true,
             model: parseModel(body.model),
             effort: isAgentEffort(body.effort) ? body.effort : null,
@@ -338,7 +339,7 @@ export function registerAgentRoutes(server: ViteDevServer, ctx: ApiContext): voi
           if (typeof body.itemId !== 'string' || !payload) {
             return json(res, 400, { error: 'invalid response' });
           }
-          const ok = runner.respond(id, body.itemId, payload, parseTurnSettings(body));
+          const ok = runner.respond(id, body.itemId, payload, parseTurnSettings(ctx, body));
           return json(res, ok ? 200 : 409, ok ? { ok } : { error: 'nothing pending' });
         }
       }

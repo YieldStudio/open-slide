@@ -5,7 +5,7 @@ description: Apply pending @slide-comment markers written by the open-slide insp
 
 # Apply slide comments
 
-The open-slide editor has a comment mode that lets the user click a rendered page element, or drag across a region of the page, and attach a textual comment (e.g. *"make this red"*, *"change to 'Open Slide Rocks'"*). Each comment is persisted as an in-source JSX marker inside `slides/<slideId>/index.tsx`.
+The open-slide editor has a comment mode that lets the user click a rendered page element, or drag across a region of the page, and attach a textual comment (e.g. *"make this red"*, *"change to 'Open Slide Rocks'"*). Each comment is persisted as an in-source JSX marker inside `slides/<slideId>/index.tsx`, or inside the deck file that holds the commented element when pages are split across files (e.g. `slides/<slideId>/pages/intro.tsx`).
 
 Your job: read those markers, perform the described edits, and delete the markers.
 
@@ -30,8 +30,8 @@ Your job: read those markers, perform the described edits, and delete the marker
 ## Procedure
 
 1. **Identify the target slide(s).**
-   - If the user names one (`getting-started`, `q2-roadmap`, etc.), work on that single `slides/<slideId>/index.tsx`.
-   - If they say "all" or don't specify, scan every `slides/*/index.tsx`. Process each slide one at a time.
+   - If the user names one (`getting-started`, `q2-roadmap`, etc.), work on that slide's `.tsx` files under `slides/<slideId>/`.
+   - If they say "all" or don't specify, scan every `.tsx` file under `slides/*/`. Process each slide one at a time.
 
 2. **Read the file and find all markers.**
    - Run the regex above against the whole file.
