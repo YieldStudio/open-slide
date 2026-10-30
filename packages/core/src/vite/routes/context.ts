@@ -95,3 +95,19 @@ export async function readSlideSource(file: string): Promise<string | null> {
     throw err;
   }
 }
+
+const fileLocks = new Map<string, Promise<unknown>>();
+
+// Each mutation route reads a source file, rewrites it, and writes it back.
+// Two clients saving at once would otherwise both read the old text and
+// the second write would silently drop the first one's change.
+export function withFileLock<T>(file: string, task: () => Promise<T>): Promise<T> {
+  const previous = fileLocks.get(file) ?? Promise.resolve();
+  const run = previous.then(task, task);
+  const settled = run.catch(() => undefined);
+  fileLocks.set(file, settled);
+  void settled.then(() => {
+    if (fileLocks.get(file) === settled) fileLocks.delete(file);
+  });
+  return run;
+}

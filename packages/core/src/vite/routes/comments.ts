@@ -21,6 +21,7 @@ import {
   readBody,
   readSlideSource,
   resolveSlideEntryPath,
+  withFileLock,
 } from './context.ts';
 
 // GET    /__comments        list markers for ?slideId=…
@@ -67,33 +68,39 @@ export function registerCommentRoutes(server: ViteDevServer, ctx: ApiContext): v
           return json(res, 400, { error: 'missing text' });
         }
 
-        const source = await readSlideSource(file);
-        if (source === null) return json(res, 404, { error: 'slide not found' });
+        const text = body.text;
+        const outcome = await withFileLock(file, async () => {
+          const source = await readSlideSource(file);
+          if (source === null) return { status: 404, body: { error: 'slide not found' } };
 
-        const plan = findInsertion(source, body.line, body.column);
-        if (!plan) {
-          return json(res, 422, {
-            error:
-              'could not find a JSX container around line ' +
-              `${body.line}. Try clicking a different element.`,
-          });
-        }
+          const plan = findInsertion(source, body.line ?? 0, body.column);
+          if (!plan) {
+            return {
+              status: 422,
+              body: {
+                error:
+                  'could not find a JSX container around line ' +
+                  `${body.line}. Try clicking a different element.`,
+              },
+            };
+          }
 
-        const id = newCommentId();
-        const ts = new Date().toISOString();
-        const payload: CommentPayload = {
-          note: body.text,
-          hint: body.hint,
-          rect: parseCommentRect(body.rect),
-          page: parseCommentPage(body.page),
-        };
-        const encoded = b64urlEncode(JSON.stringify(payload));
-        const marker = buildMarker(plan, id, ts, encoded);
+          const id = newCommentId();
+          const ts = new Date().toISOString();
+          const payload: CommentPayload = {
+            note: text,
+            hint: body.hint,
+            rect: parseCommentRect(body.rect),
+            page: parseCommentPage(body.page),
+          };
+          const encoded = b64urlEncode(JSON.stringify(payload));
+          const marker = buildMarker(plan, id, ts, encoded);
 
-        const next = source.slice(0, plan.offset) + marker + source.slice(plan.offset);
-        await fs.writeFile(file, next, 'utf8');
-        const markerLine = offsetToLine(next, plan.offset + 1);
-        return json(res, 200, { id, line: markerLine });
+          const next = source.slice(0, plan.offset) + marker + source.slice(plan.offset);
+          await fs.writeFile(file, next, 'utf8');
+          return { status: 200, body: { id, line: offsetToLine(next, plan.offset + 1) } };
+        });
+        return json(res, outcome.status, outcome.body);
       }
 
       if (method === 'PUT' && url.pathname.startsWith('/')) {
@@ -109,12 +116,11 @@ export function registerCommentRoutes(server: ViteDevServer, ctx: ApiContext): v
         if (!body.text || typeof body.text !== 'string') {
           return json(res, 400, { error: 'missing text' });
         }
-        const source = await readSlideSource(file);
-        if (source === null) return json(res, 404, { error: 'slide not found' });
-        const next = updateMarkerNote(source, id, body.text);
-        if (next === null) return json(res, 404, { error: 'marker not found' });
-        await fs.writeFile(file, next, 'utf8');
-        return json(res, 200, { ok: true });
+        const text = body.text;
+        const outcome = await withFileLock(file, () =>
+          rewriteMarker(file, (source) => updateMarkerNote(source, id, text)),
+        );
+        return json(res, outcome.status, outcome.body);
       }
 
       if (method === 'DELETE' && url.pathname.startsWith('/')) {
@@ -128,13 +134,10 @@ export function registerCommentRoutes(server: ViteDevServer, ctx: ApiContext): v
         const file = resolveSlideEntryPath(ctx, slideId);
         if (!file) return json(res, 400, { error: 'invalid slideId' });
 
-        const source = await readSlideSource(file);
-        if (source === null) return json(res, 404, { error: 'slide not found' });
-
-        const next = removeMarker(source, id);
-        if (next === null) return json(res, 404, { error: 'marker not found' });
-        await fs.writeFile(file, next, 'utf8');
-        return json(res, 200, { ok: true });
+        const outcome = await withFileLock(file, () =>
+          rewriteMarker(file, (source) => removeMarker(source, id)),
+        );
+        return json(res, outcome.status, outcome.body);
       }
 
       next();
@@ -142,4 +145,16 @@ export function registerCommentRoutes(server: ViteDevServer, ctx: ApiContext): v
       json(res, 500, { error: String((err as Error).message ?? err) });
     }
   });
+}
+
+async function rewriteMarker(
+  file: string,
+  rewrite: (source: string) => string | null,
+): Promise<{ status: number; body: unknown }> {
+  const source = await readSlideSource(file);
+  if (source === null) return { status: 404, body: { error: 'slide not found' } };
+  const next = rewrite(source);
+  if (next === null) return { status: 404, body: { error: 'marker not found' } };
+  await fs.writeFile(file, next, 'utf8');
+  return { status: 200, body: { ok: true } };
 }

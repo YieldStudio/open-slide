@@ -10,6 +10,7 @@ import {
   readBody,
   readSlideSource,
   resolveSlideEntryPath,
+  withFileLock,
 } from './context.ts';
 
 // POST /__edit                applyEdit({ slideId, line, column, ops })
@@ -45,14 +46,17 @@ export function registerEditRoutes(server: ViteDevServer, ctx: ApiContext): void
         if (!body.line || body.line < 1) return json(res, 400, { error: 'invalid line' });
         if (!Array.isArray(body.ops)) return json(res, 400, { error: 'missing ops' });
 
-        const source = await readSlideSource(file);
-        if (source === null) return json(res, 404, { error: 'slide not found' });
-
-        const result = applyEdit(source, body.line, body.column ?? 0, body.ops);
-        if (!result.ok) return json(res, result.status, { error: result.error });
-        const changed = result.source !== source;
-        if (changed) await fs.writeFile(file, result.source, 'utf8');
-        return json(res, 200, { ok: true, changed });
+        const ops = body.ops;
+        const outcome = await withFileLock(file, async () => {
+          const source = await readSlideSource(file);
+          if (source === null) return { status: 404, body: { error: 'slide not found' } };
+          const result = applyEdit(source, body.line ?? 0, body.column ?? 0, ops);
+          if (!result.ok) return { status: result.status, body: { error: result.error } };
+          const changed = result.source !== source;
+          if (changed) await fs.writeFile(file, result.source, 'utf8');
+          return { status: 200, body: { ok: true, changed } };
+        });
+        return json(res, outcome.status, outcome.body);
       }
 
       if (url.pathname === '/revert-asset') {
@@ -68,14 +72,16 @@ export function registerEditRoutes(server: ViteDevServer, ctx: ApiContext): void
           return json(res, 400, { error: 'asset path must start with ./assets/ or @assets/' });
         }
 
-        const source = await readSlideSource(file);
-        if (source === null) return json(res, 404, { error: 'slide not found' });
-
-        const result = applyRevertAsset(source, assetPath);
-        if (!result.ok) return json(res, result.status, { error: result.error });
-        const changed = result.source !== source;
-        if (changed) await fs.writeFile(file, result.source, 'utf8');
-        return json(res, 200, { ok: true, changed });
+        const outcome = await withFileLock(file, async () => {
+          const source = await readSlideSource(file);
+          if (source === null) return { status: 404, body: { error: 'slide not found' } };
+          const result = applyRevertAsset(source, assetPath);
+          if (!result.ok) return { status: result.status, body: { error: result.error } };
+          const changed = result.source !== source;
+          if (changed) await fs.writeFile(file, result.source, 'utf8');
+          return { status: 200, body: { ok: true, changed } };
+        });
+        return json(res, outcome.status, outcome.body);
       }
 
       // One read-modify-write per batch so a multi-element edit session
@@ -88,13 +94,16 @@ export function registerEditRoutes(server: ViteDevServer, ctx: ApiContext): void
         if (!file) return json(res, 400, { error: 'invalid slideId' });
         if (!Array.isArray(body.edits)) return json(res, 400, { error: 'missing edits' });
 
-        const source = await readSlideSource(file);
-        if (source === null) return json(res, 404, { error: 'slide not found' });
-
-        const { source: updated, results } = applyEditBatch(source, body.edits);
-        const changed = updated !== source;
-        if (changed) await fs.writeFile(file, updated, 'utf8');
-        return json(res, 200, { ok: true, changed, results });
+        const edits = body.edits;
+        const outcome = await withFileLock(file, async () => {
+          const source = await readSlideSource(file);
+          if (source === null) return { status: 404, body: { error: 'slide not found' } };
+          const { source: updated, results } = applyEditBatch(source, edits);
+          const changed = updated !== source;
+          if (changed) await fs.writeFile(file, updated, 'utf8');
+          return { status: 200, body: { ok: true, changed, results } };
+        });
+        return json(res, outcome.status, outcome.body);
       }
 
       return next();
