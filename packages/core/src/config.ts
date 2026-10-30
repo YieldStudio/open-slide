@@ -1,3 +1,4 @@
+import type { PluginOption } from 'vite';
 import type { Locale } from './locale/types';
 
 export type OpenSlideBuildConfig = {
@@ -25,4 +26,6 @@ export type OpenSlideConfig = {
   locale?: Locale;
   build?: OpenSlideBuildConfig;
   agent?: OpenSlideAgentConfig;
+  /** Extra Vite plugins, appended after open-slide's own. */
+  vitePlugins?: PluginOption[];
 };

@@ -1,0 +1,34 @@
+{
+  "name": "@yieldstudio/open-slide-collab",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Live sync of an open-slide slides/ folder between workspaces, over Liveblocks.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@liveblocks/client": "3.24.3",
+    "@liveblocks/yjs": "3.24.3",
+    "yjs": "13.6.33"
+  },
+  "peerDependencies": {
+    "vite": "^8.3.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.2",
+    "tsdown": "^0.22.14",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.3"
+  }
+}
