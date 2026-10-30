@@ -30,5 +30,8 @@
     "tsdown": "^0.22.14",
     "typescript": "^7.0.2",
     "vite": "^8.3.3"
+  },
+  "bin": {
+    "open-slide-collab": "./dist/cli.js"
   }
 }

@@ -34,6 +34,9 @@ export type SlidesSyncOptions = {
   doc: Y.Doc;
   backupDir: string;
   log?: (message: string) => void;
+  // While false (read-only workspace), local edits stay local and the room's
+  // version wins on the next start.
+  canUpload?: () => boolean;
 };
 
 export type SlidesSync = {
@@ -240,7 +243,7 @@ export function createSlidesSync(opts: SlidesSyncOptions): SlidesSync {
     },
 
     async localChanged(file) {
-      if (!started) return;
+      if (!started || opts.canUpload?.() === false) return;
       const rel = toRel(file);
       if (!isSyncedPath(rel)) return;
       const content = await readLocal(rel);
@@ -253,7 +256,7 @@ export function createSlidesSync(opts: SlidesSyncOptions): SlidesSync {
     },
 
     localRemoved(file) {
-      if (!started) return;
+      if (!started || opts.canUpload?.() === false) return;
       const rel = toRel(file);
       if (!isSyncedPath(rel) || !files.has(rel)) return;
       echoes.delete(rel);
